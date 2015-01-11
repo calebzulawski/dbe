@@ -137,7 +137,7 @@ void bail(lua_State *L, char *msg){
 	exit(1);
 }
 
-int runlua(char *filename, uint64_t *bitmapData, int bytesPerPixel, int bitmapLen)
+void *runlua(uint64_t *returnData, char *filename, uint64_t *bitmapData, int bytesPerPixel, int bitmapLen)
 {
     lua_State *L;
 
@@ -157,10 +157,11 @@ int runlua(char *filename, uint64_t *bitmapData, int bytesPerPixel, int bitmapLe
         lua_pushnumber(L,bitmapData[i]);
         lua_settable(L, -3);
     }
-    lua_pushstring(L,"len");
-    lua_pushnumber(L,bitmapLen);
-    lua_settable(L,-3);
     lua_setglobal(L,"data");
+    lua_pushnumber(L,bitmapLen);
+    lua_setglobal(L,"dataLen");
+    lua_pushnumber(L,8*bytesPerPixel);
+    lua_setglobal(L,"dataBits");
 
     printf("Executing Lua...\n");
 
@@ -169,9 +170,17 @@ int runlua(char *filename, uint64_t *bitmapData, int bytesPerPixel, int bitmapLe
 
     printf("Lua complete.\n");
 
+    lua_getglobal(L,"data");
+    for(i = 0; i < bitmapLen; i++)
+    {
+        lua_pushnumber(L,i);
+        lua_gettable(L, -2);
+        returnData[i] = lua_tonumber(L,-1);
+        lua_pop(L,1);
+    }
     lua_close(L);                               /* Clean up, free the Lua state var */
 
-    return 0;
+    return returnData;
 }
 
 int main(int argc, char *argv[])
@@ -220,6 +229,8 @@ int main(int argc, char *argv[])
     bitmapData = LoadBitmapFile(infile, &bitmapFileHeader, &bitmapInfoHeader);
     printf("Size is: %d x %d\n",bitmapInfoHeader.biWidth,bitmapInfoHeader.biHeight);
 
+
+    //get section of bitmap to modify
     length = (xmax - xmin + 1)*(ymax - ymin + 1);
     uint64_t selectData[length];
 
@@ -229,16 +240,36 @@ int main(int argc, char *argv[])
         for(j = ymin; j <= ymax; j++)
         {
             startIndex = bytesPerPixel*((i-1) + (j-1)*bitmapInfoHeader.biWidth);
+            selectData[count] = 0;
             for(index = startIndex; index < startIndex + bytesPerPixel; index++)
             {
                 selectData[count] = selectData[count] << 8;
                 selectData[count] += bitmapData[index];
             }
+            count++;
         }
     }
 
     //lua
-    runlua(luafile,selectData,bytesPerPixel,length);
+    uint64_t modifiedData[length];
+    runlua(modifiedData,luafile,selectData,bytesPerPixel,length);
+
+    //modify bitmap data
+    count = 0;
+    for(i = xmin; i <= xmax; i++)
+    {
+        for(j = ymin; j <= ymax; j++)
+        {
+            startIndex = bytesPerPixel*((i-1) + (j-1)*bitmapInfoHeader.biWidth);
+            selectData[count] = 0;
+            for(index = startIndex; index < startIndex + bytesPerPixel; index++)
+            {
+                bitmapData[index] = (modifiedData[count] >> 8*(bytesPerPixel-1)) & 0xFF;
+                modifiedData[count] = modifiedData[count] << 8;
+            }
+            count++;
+        }
+    }
 
     //write bitmap
     WriteBitmapFile(outfile, &bitmapFileHeader, &bitmapInfoHeader, bitmapData);
