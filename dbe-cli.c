@@ -69,7 +69,7 @@ unsigned char *LoadBitmapFile(char *filename, BITMAPFILEHEADER *bitmapFileHeader
     }
 
     //read BITMAPINFOHEADER
-    fread(bitmapInfoHeader, sizeof(BITMAPINFOHEADER),1,fp); // small edit. forgot to add the closing bracket at sizeof
+    fread(bitmapInfoHeader, sizeof(BITMAPINFOHEADER),1,fp);
 
     //move file pointer to offset of image as specified in the file header
     fseek(fp, bitmapFileHeader->offset, SEEK_SET);
