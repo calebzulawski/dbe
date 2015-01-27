@@ -1,156 +1,174 @@
-#include <lua.h>
-#include <lauxlib.h>
-#include <lualib.h>
+/*  DBE-CLI.C - The command line interface for the DataBending Editor
+    Created by Caleb Zulawski
+    More information about flags/options/configuration will come as this project develops further.
+    This software is released as free software under the GNU General Public License v2. */
 
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <lua.h>
+#include <lauxlib.h>
+#include <lualib.h>
 
+/* The specifications for bitmap files were taken from http://en.wikipedia.org/wiki/BMP_file_format */
+
+/* struct for BITMAP FILE HEADER */
 #pragma pack(push, 1)
-
 typedef struct tagBITMAPFILEHEADER
 {
-    uint16_t bfType;  //specifies the file type
-    uint32_t bfSize;  //specifies the size in bytes of the bitmap file
-    uint16_t bfReserved1;  //reserved; must be 0
-    uint16_t bfReserved2;  //reserved; must be 0
-    uint32_t bfOffBits;  //species the offset in bytes from the bitmapfileheader to the bitmap bits
+    uint16_t type;          //file type
+    uint32_t size;          //file size in bytes
+    uint16_t reserved1;     //reserved
+    uint16_t reserved2;     //reserved
+    uint32_t offset;        //offset in bytes from file header to image data
 }BITMAPFILEHEADER;
-
 #pragma pack(pop)
 
+/* struct for BITMAP INFO HEADER */
 #pragma pack(push, 1)
-
 typedef struct tagBITMAPINFOHEADER
 {
-    uint32_t biSize;  //specifies the number of bytes required by the struct
-    uint32_t biWidth;  //specifies width in pixels
-    uint32_t biHeight;  //species height in pixels
-    uint16_t biPlanes; //specifies the number of color planes, must be 1
-    uint16_t biBitCount; //specifies the number of bit per pixel
-    uint32_t biCompression;//spcifies the type of compression
-    uint32_t biSizeImage;  //size of image in bytes
-    uint32_t biXPelsPerMeter;  //number of pixels per meter in x axis
-    uint32_t biYPelsPerMeter;  //number of pixels per meter in y axis
-    uint32_t biClrUsed;  //number of colors used by th ebitmap
-    uint32_t biClrImportant;  //number of colors that are important
+    uint32_t size;              //header size in bytes
+    int32_t width;              //bitmap width in pixels
+    int32_t height;             //bitmap height in pixels
+    uint16_t planes;            //number of color planes (should be 1)
+    uint16_t bitsperpx;         //number of bits per pixel
+    uint32_t compression;       //compression method used (we wont be using this)
+    uint32_t imageSize;         //image size in bytes
+    int32_t xppm;               //horizontal resolution (pixels per meter)
+    int32_t yppm;               //vertical resolution (pixels per meter)
+    uint32_t colors;            //number of colors in color palette
+    uint32_t colorsImportant;   //number of important colors (0 if every color is important)
 }BITMAPINFOHEADER;
-
 #pragma pack(pop)
 
+/* function for reading the bitmap file */
 unsigned char *LoadBitmapFile(char *filename, BITMAPFILEHEADER *bitmapFileHeader, BITMAPINFOHEADER *bitmapInfoHeader)
 {
-    FILE *filePtr; //our file pointer
-    unsigned char *bitmapImage;  //store image data
+    FILE *fp;                   //bitmap file pointer
+    unsigned char *imageData;   //image data will be stored here
 
-    //open filename in read binary mode
-    filePtr = fopen(filename,"rb");
-    if (filePtr == NULL)
+    //open filename
+    fp = fopen(filename,"rb");
+    if (fp == NULL)
     {
         printf("Opening bitmap file failed.\n");
         return NULL;
     }
         
 
-    //read the bitmap file header
-    fread(bitmapFileHeader, sizeof(BITMAPFILEHEADER),1,filePtr);
+    //read BITMAPFILEHEADER into struct
+    fread(bitmapFileHeader, sizeof(BITMAPFILEHEADER),1,fp);
 
-    //verify that this is a bmp file by check bitmap id
-    if (bitmapFileHeader->bfType != 0x4D42)
+    //verify file is BMP
+    if (bitmapFileHeader->type != 0x4D42)
     {
-        fclose(filePtr);
+        fclose(fp);
         printf("Selected file is not a BMP.\n");
         return NULL;
     }
 
-    //read the bitmap info header
-    fread(bitmapInfoHeader, sizeof(BITMAPINFOHEADER),1,filePtr); // small edit. forgot to add the closing bracket at sizeof
+    //read BITMAPINFOHEADER
+    fread(bitmapInfoHeader, sizeof(BITMAPINFOHEADER),1,fp); // small edit. forgot to add the closing bracket at sizeof
 
-    //move file point to the begging of bitmap data
-    fseek(filePtr, bitmapFileHeader->bfOffBits, SEEK_SET);
+    //move file pointer to offset of image as specified in the file header
+    fseek(fp, bitmapFileHeader->offset, SEEK_SET);
 
-    //allocate enough memory for the bitmap image data
-    bitmapImage = (unsigned char*)malloc(bitmapInfoHeader->biSizeImage);
-
-    //verify memory allocation
-    if (!bitmapImage)
+    //allocate memory for the actual image data
+    imageData = (unsigned char*)malloc(bitmapInfoHeader->imageSize);
+    if (!imageData)
     {
-        free(bitmapImage);
-        fclose(filePtr);
+        free(imageData);
+        fclose(fp);
         printf("Memory allocation failed.\n");
         return NULL;
     }
 
-    //read in the bitmap image data
-    fread(bitmapImage,bitmapInfoHeader->biSizeImage,1,filePtr);
-
-    //make sure bitmap image data was read
-    if (bitmapImage == NULL)
+    //read image data
+    fread(imageData,bitmapInfoHeader->imageSize,1,fp);
+    if (imageData == NULL)
     {
-        fclose(filePtr);
+        fclose(fp);
         printf("Bitmap image data was not read successfully.\n");
         return NULL;
     }
 
-    //close file and return bitmap iamge data
-    fclose(filePtr);
+    //return image
+    fclose(fp);
     printf("Bitmap image read successfully.\n");
-    return bitmapImage;
+    return imageData;
 }
 
-int WriteBitmapFile(char *filename, BITMAPFILEHEADER *bitmapFileHeader, BITMAPINFOHEADER *bitmapInfoHeader, unsigned char *bitmapImage)
+/* function for writing bitmap files */
+int WriteBitmapFile(char *filename, BITMAPFILEHEADER *bitmapFileHeader, BITMAPINFOHEADER *bitmapInfoHeader, unsigned char *imageData)
 {
-    FILE *filePtr; //our file pointer
+    FILE *fp; //bitmap file pointer
 
-    //open filename in read binary mode
-    filePtr = fopen(filename,"wb");
-    if (filePtr == NULL)
+    //open filename
+    fp = fopen(filename,"wb");
+    if (fp == NULL)
     {
         printf("Creating bitmap file failed.\n");
         return -1;
     }
 
-    fwrite(bitmapFileHeader,sizeof(BITMAPFILEHEADER),1,filePtr);
-    fwrite(bitmapInfoHeader,sizeof(BITMAPINFOHEADER),1,filePtr);
-    fseek(filePtr, bitmapFileHeader->bfOffBits, SEEK_SET);
-    fwrite(bitmapImage,bitmapInfoHeader->biSizeImage,1,filePtr);
+    //write file header, then info header
+    fwrite(bitmapFileHeader,sizeof(BITMAPFILEHEADER),1,fp);
+    fwrite(bitmapInfoHeader,sizeof(BITMAPINFOHEADER),1,fp);
+
+    //move file pointer to offset in info header, then write the image data
+    fseek(fp, bitmapFileHeader->offset, SEEK_SET);
+    fwrite(imageData,bitmapInfoHeader->imageSize,1,fp);
     return 0;
 }
 
-unsigned char *reverseRGB(unsigned char *bitmapImage, BITMAPINFOHEADER *bitmapInfoHeader)
+/* function for flipping BGR to RGB or vice versa (bitmap uses BGR) */
+unsigned char *reverseRGB(unsigned char *imageData, BITMAPINFOHEADER *bitmapInfoHeader)
 {
-    int imageIdx=0;  //image index counter
-    unsigned char tempRGB;  //our swap variable
-    //swap the r and b values to get RGB (bitmap is BGR)
-    for (imageIdx = 0;imageIdx < bitmapInfoHeader->biSizeImage;imageIdx+=3)
+    int idx = 0;            //image index var
+    unsigned char tempRGB;  //temp var for RGB values
+
+    for(idx = 0; idx < bitmapInfoHeader->imageSize; idx+=3)
     {
-        tempRGB = bitmapImage[imageIdx];
-        bitmapImage[imageIdx] = bitmapImage[imageIdx + 2];
-        bitmapImage[imageIdx + 2] = tempRGB;
+        tempRGB = imageData[idx];
+        // swap R and B
+        imageData[idx] = imageData[idx + 2];
+        imageData[idx + 2] = tempRGB;
     }
-    return bitmapImage;
+    return imageData;
 }
 
-void bail(lua_State *L, char *msg){
-	fprintf(stderr, "\nFATAL ERROR:\n  %s: %s\n\n",
-		msg, lua_tostring(L, -1));
+/* function for handling errors from lua */
+void exitLua(lua_State *L, char *msg)
+{
+    //print error and display top of stack
+	fprintf(stderr, "ERROR (Lua):\n%s: %s\n", msg, lua_tostring(L, -1));
 	exit(1);
 }
-
+/* function for running Lua on the image data
+   ARGUMENTS:
+    returnData: pointer to the variable where the processed image will be dumped
+    filename: filename of the Lua file
+    bitmapData: the image data to be processed by Lua
+    bytesPerPixel: number of bytes per pixel to be used when creating Lua array (can be adjusted for databending effects)
+    bitmapLen: length of the bitmap array for the given value of bytesPerPixel
+*/
 void *runlua(uint64_t *returnData, char *filename, uint64_t *bitmapData, int bytesPerPixel, int bitmapLen)
 {
     lua_State *L;
 
-    L = luaL_newstate();                        /* Create Lua state variable */
-    luaL_openlibs(L);                           /* Load Lua libraries */
+    L = luaL_newstate();    //create Lua state variable
+    luaL_openlibs(L);       //open Lua libraries
 
-    if (luaL_loadfile(L, filename))    /* Load but don't run the Lua script */
-	bail(L, "luaL_loadfile() failed");      /* Error out if file can't be read */
-
+    if (luaL_loadfile(L, filename))             //load Lua file (image effect)
+    {
+        exitLua(L, "luaL_loadfile() failed");   //exit if problems with file
+    }         
+	  
     printf("Pushing data to Lua.\n");
+    //push image data to Lua as array
     lua_newtable(L);
     int i = 0;
-    printf("%d",bitmapLen);
     for(i = 0; i < bitmapLen; i++)
     {
         lua_pushnumber(L,i);
@@ -164,12 +182,15 @@ void *runlua(uint64_t *returnData, char *filename, uint64_t *bitmapData, int byt
     lua_setglobal(L,"dataBits");
 
     printf("Executing Lua...\n");
+    //run the Lua file
+    if (lua_pcall(L, 0, 0, 0))
+    {
+        exitLua(L, "lua_pcall() failed");
+    }
 
-    if (lua_pcall(L, 0, 0, 0))                  /* Run the loaded Lua script */
-	bail(L, "lua_pcall() failed");          /* Error out if Lua file has an error */
+    printf("Executing Lua complete.\n");
 
-    printf("Lua complete.\n");
-
+    //pull image data from Lua
     lua_getglobal(L,"data");
     for(i = 0; i < bitmapLen; i++)
     {
@@ -178,11 +199,13 @@ void *runlua(uint64_t *returnData, char *filename, uint64_t *bitmapData, int byt
         returnData[i] = lua_tonumber(L,-1);
         lua_pop(L,1);
     }
-    lua_close(L);                               /* Clean up, free the Lua state var */
 
-    return returnData;
+    //close lua and return
+    lua_close(L);
+    return 0;
 }
 
+/* main() */
 int main(int argc, char *argv[])
 {
     char infile[256];
@@ -190,20 +213,22 @@ int main(int argc, char *argv[])
     char luafile[256];
     char buf[256];
     int count, i, j, index, startIndex, bytesPerPixel, xmin, xmax, ymin, ymax, length;
+    
     //read config file
-    FILE *filePtr; //our file pointer
-    //open filename in read binary mode
-    filePtr = fopen(argv[1],"rb");
-    if (filePtr == NULL)
+    FILE *fp;
+    fp = fopen(argv[1],"rb");
+    if (fp == NULL)
     {
         printf("Opening config file failed.\n");
         return 0;
     }
-    fgets(infile,sizeof(infile),filePtr);
-    fgets(outfile,sizeof(infile),filePtr);
-    fgets(luafile,sizeof(luafile),filePtr);
 
-    //remove newlines from filenames
+    //parse filenames from config file
+    fgets(infile,sizeof(infile),fp);
+    fgets(outfile,sizeof(infile),fp);
+    fgets(luafile,sizeof(luafile),fp);
+
+    //remove newlines from filenames, maybe there is a better way
     for(i = 0; i < 256; i++)
     {
         if(infile[i] == '\n')
@@ -214,9 +239,10 @@ int main(int argc, char *argv[])
             luafile[i] = '\0';
     }
 
-    fgets(buf,sizeof(buf),filePtr);
+    //parse options from config file
+    fgets(buf,sizeof(buf),fp);
     sscanf(buf, "%d", &bytesPerPixel);
-    fgets(buf,sizeof(buf),filePtr);
+    fgets(buf,sizeof(buf),fp);
     sscanf(buf, "%d %d %d %d",&xmin,&xmax,&ymin,&ymax);
 
     printf("Reading from %s.\nWriting to %s.\n",infile,outfile);
@@ -227,7 +253,7 @@ int main(int argc, char *argv[])
     unsigned char *bitmapData;
 
     bitmapData = LoadBitmapFile(infile, &bitmapFileHeader, &bitmapInfoHeader);
-    printf("Size is: %d x %d\n",bitmapInfoHeader.biWidth,bitmapInfoHeader.biHeight);
+    printf("Size is: %d x %d\n",bitmapInfoHeader.width,bitmapInfoHeader.height);
 
 
     //get section of bitmap to modify
@@ -239,7 +265,7 @@ int main(int argc, char *argv[])
     {
         for(j = ymin; j <= ymax; j++)
         {
-            startIndex = bytesPerPixel*((i-1) + (j-1)*bitmapInfoHeader.biWidth);
+            startIndex = bytesPerPixel*((i-1) + (j-1)*bitmapInfoHeader.width);
             selectData[count] = 0;
             for(index = startIndex; index < startIndex + bytesPerPixel; index++)
             {
@@ -250,7 +276,7 @@ int main(int argc, char *argv[])
         }
     }
 
-    //lua
+    //run Lua and get the modified image data
     uint64_t modifiedData[length];
     runlua(modifiedData,luafile,selectData,bytesPerPixel,length);
 
@@ -260,7 +286,7 @@ int main(int argc, char *argv[])
     {
         for(j = ymin; j <= ymax; j++)
         {
-            startIndex = bytesPerPixel*((i-1) + (j-1)*bitmapInfoHeader.biWidth);
+            startIndex = bytesPerPixel*((i-1) + (j-1)*bitmapInfoHeader.width);
             selectData[count] = 0;
             for(index = startIndex; index < startIndex + bytesPerPixel; index++)
             {
@@ -271,7 +297,7 @@ int main(int argc, char *argv[])
         }
     }
 
-    //write bitmap
+    //write new bitmap file
     WriteBitmapFile(outfile, &bitmapFileHeader, &bitmapInfoHeader, bitmapData);
     return 0;
 }
