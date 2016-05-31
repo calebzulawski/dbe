@@ -3,6 +3,7 @@
 #include <QMenuBar>
 #include <QMenu>
 #include <QMessageBox>
+#include <QtGlobal>
 #include <sstream>
 #include <Python.h>
 
@@ -26,15 +27,27 @@ void Main::createHelpMenu() {
     QMenu* helpMenu = menuBar()->addMenu(tr("&Help"));
     QAction* aboutAction = new QAction(tr("&About"), this);
     connect(aboutAction, &QAction::triggered, this, [this](){
+        // get running python version
         std::stringstream ss;
+        ss << Py_GetVersion();
+        std::string runningPythonVersion;
+        ss >> runningPythonVersion;
+        ss.clear();
+        ss.str(std::string());
+
         ss << "<center><font size = 16>Databending Editor</font><br>";
         ss << "a free databending image editor<br>" << std::endl;
-        ss << "dbe " << DBE_VERSION << "<br>";
-        ss << "Python version " << PY_MAJOR_VERSION << "."
-                                << PY_MINOR_VERSION << "."
-                                << PY_MICRO_VERSION << "<br><br>";
+        ss << "dbe " << DBE_VERSION << "<br><br>";
+
+        ss << "Python " << runningPythonVersion << ", built with "
+                        << PY_MAJOR_VERSION << "."
+                        << PY_MINOR_VERSION << "."
+                        << PY_MICRO_VERSION << "<br>";
+        ss << "Qt " << qVersion() << ", built with "
+                    << QT_VERSION_STR << "<br><br>";
+
         ss << "Copyright (C) 2016  Caleb Zulawski<br></center>";
-        
+
         ss << "This program is free software: you can redistribute it and/or modify<br>";
         ss << "it under the terms of the GNU General Public License as published by<br>";
         ss << "the Free Software Foundation, either version 3 of the License, or<br>";
