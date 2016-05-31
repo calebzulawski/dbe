@@ -3,7 +3,10 @@ cmake_policy(SET CMP0028 NEW)
 
 project(dbe)
 
-set (DBE_VERSION 0.0)
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+include(GetGitRevisionDescription)
+
+git_describe(DBE_VERSION --tags --long)
 
 configure_file (
   "${PROJECT_SOURCE_DIR}/dbe_info.hpp.in"
