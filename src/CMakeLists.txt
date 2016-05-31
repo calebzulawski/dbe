@@ -16,8 +16,14 @@ configure_file (
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 set(CMAKE_AUTOMOC ON)
 
+# position-independent code (should work find_package on Qt5Widgets)
 add_definitions(-fPIC)
+
+# C++11
 add_definitions(-std=c++11)
+
+# Allow building Qt and python together
+add_definitions(-DQT_NO_KEYWORDS)
 
 find_package(Qt5Widgets REQUIRED)
 find_package(PythonLibs 3 REQUIRED)
@@ -30,7 +36,6 @@ add_subdirectory(widgets)
 
 add_executable(dbe dbe.cpp $<TARGET_OBJECTS:widgets>)
 
-# Allow building Qt and python together
-target_compile_definitions(dbe PRIVATE QT_NO_KEYWORDS)
+
 
 target_link_libraries(dbe Qt5::Widgets ${PYTHON_LIBRARIES})
