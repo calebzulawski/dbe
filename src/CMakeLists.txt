@@ -3,6 +3,13 @@ cmake_policy(SET CMP0028 NEW)
 
 project(dbe)
 
+set (DBE_VERSION 0.0)
+
+configure_file (
+  "${PROJECT_SOURCE_DIR}/dbe_info.hpp.in"
+  "${PROJECT_BINARY_DIR}/dbe_info.hpp"
+  )
+
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 set(CMAKE_AUTOMOC ON)
 
@@ -12,6 +19,7 @@ add_definitions(-std=c++11)
 find_package(Qt5Widgets REQUIRED)
 find_package(PythonLibs 3 REQUIRED)
 
+include_directories("${PROJECT_BINARY_DIR}")
 include_directories(${PYTHON_INCLUDE_DIRS})
 include_directories(${Qt5Widgets_INCLUDE_DIRS})
 

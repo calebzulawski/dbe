@@ -12,6 +12,7 @@ private:
     void createMenuBar();
     void createFileMenu();
     void createPluginsMenu();
+    void createHelpMenu();
 };
 
 } // namespace gui
