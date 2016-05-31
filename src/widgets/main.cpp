@@ -4,19 +4,32 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QtGlobal>
+#include <QFileDialog>
+#include <QMdiArea>
+#include <QMdiSubWindow>
 #include <sstream>
 #include <Python.h>
 
 #include "dbe_info.hpp"
+#include "editor.hpp"
 
 using namespace gui;
 
 Main::Main() {
     createMenuBar();
+    createMDI();
 }
 
 void Main::createFileMenu() {
     QMenu* fileMenu = menuBar()->addMenu(tr("&File"));
+    QAction* openAction = new QAction(tr("&Open File..."), this);
+    connect(openAction, &QAction::triggered, this, [this]() {
+        QStringList filenames = QFileDialog::getOpenFileNames(this, "caption", "dir", tr("PNG (*.png);;Any file (*)"));
+        for (auto file : filenames) {
+            static_cast<QMdiArea*>(this->centralWidget())->addSubWindow(new Editor(file));
+        }
+    });
+    fileMenu->addAction(openAction);
 }
 
 void Main::createPluginsMenu() {
@@ -36,7 +49,7 @@ void Main::createHelpMenu() {
         ss.str(std::string());
 
         ss << "<center><font size = 16>Databending Editor</font><br>";
-        ss << "a free databending image editor<br>" << std::endl;
+        ss << "a free databending image manipulation tool<br>" << std::endl;
         ss << "dbe " << DBE_VERSION << "<br><br>";
 
         ss << "Python " << runningPythonVersion << ", built with "
@@ -65,6 +78,12 @@ void Main::createHelpMenu() {
         QMessageBox::about(this, "About DBE", QString::fromStdString(ss.str()));
     });
     helpMenu->addAction(aboutAction);
+}
+
+void Main::createMDI() {
+    auto mdi = new QMdiArea(this);
+    mdi->setViewMode(QMdiArea::TabbedView);
+    setCentralWidget(mdi);
 }
 
 void Main::createMenuBar() {

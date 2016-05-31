@@ -13,6 +13,7 @@ private:
     void createFileMenu();
     void createPluginsMenu();
     void createHelpMenu();
+    void createMDI();
 };
 
 } // namespace gui
